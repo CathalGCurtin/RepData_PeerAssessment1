@@ -1,0 +1,128 @@
+---
+title: "Exercise Predictions Using Human Activity Recognition"
+output: html_document
+---
+# Summary
+The goal of this report is to correctly predict how well a barbell activity is performed by 6 different participants using data from accelerometers on the belt, forearm, arm, and dumbell.  The dataset comes used from Groupware@LES (http://groupware.les.inf.puc-rio.br/har). This reports aims to use the dataset in the following way:
+- Predict manner in which exercise is performed using 'classe' variable in the dataset
+- Determining which predictors to use and whether to tidy the data set
+- Building a model using the training set and cross validation
+- Determining sample error and out of sample error
+
+## Data Processing
+First load required R libraries used in this report
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+    # Load caret
+    require(caret)
+    require(randomForest)
+```
+It is assumed here that the .csvs have been loaded to the same directory as this report (rather than downloading from the website). We will load the training and test data sets as they are:
+```{r echo=TRUE}
+    # Load train and test data
+    traindata <- read.csv("./pml-training.csv", na.strings = c("", " ", "NA", "#DIV/0!"))
+    testdata <- read.csv("./pml-testing.csv", na.strings = c("", " ", "NA", "#DIV/0!"))
+```
+
+## Exploratory Data Analysis
+As the test data only has 20 rows compared to the 19622 rows of the training set, the test data is only a .1% sample of the overall data set.
+
+```{r echo=TRUE}
+    nrow(testdata)/nrow(traindata)*100
+```
+
+The number of columns is quite large in the training dataset, which may point to overfitting:
+```{r echo=TRUE}
+    ncol(traindata)
+```
+
+Also, at first glance the vast majority of columns have NAs:
+```{r echo=TRUE}
+    sum(complete.cases(traindata))
+```
+
+## Building The Model
+### Data Cleansing  
+Before cross validation and subsetting the training data into a number of k-folds, 
+we need to determine what to do with the NAs in the training and testing sets. 
+We can either remove those columns with a lot of NAs, which may improve the 
+overall data set with less noise or we can set the NA values to 0. 
+My approach is to avoid overfitting and remove NAs completely. The 1st 7 columns I've
+also removed as these variables are descriptive only and do not add anything 
+to the predictions.
+
+We need to apply this approach to both the training and test data sets:
+
+```{r echo=TRUE}
+    newtrain <- traindata[,-c(1:7)]
+    newtrain <- newtrain[ , apply(newtrain, 2, function(x) !any(is.na(x)))]
+    newtest <- testdata[,-c(1:7)]
+    newtest <- newtest[ , apply(newtest, 2, function(x) !any(is.na(x)))]
+```
+
+
+This has has intended consequences of removing these same columns from both 
+the training and test data sets, which we can quickly check - 
+```{r echo=TRUE}
+    print(dim(newtrain))
+    print(dim(newtest))
+```
+
+### Cross Validation
+We will split our new cleansing set into a new training and test set, 
+using a 50%/50% split to create 2 folds:
+
+```{r echo=TRUE}
+    inTrain <- createDataPartition(y=newtrain$classe, p=0.5, list=FALSE)
+    kfoldtrain1 <- newtrain[inTrain,]
+    kfoldtest1 <- newtrain[-inTrain,]
+```
+
+If we look at plots of the training and testing plots, the spread at 1st glance 
+looks reasonably similar. This indicates that the model should be reasonably 
+accurate using all predictors:
+    
+```{r echo=TRUE}    
+    trainplot <- qplot(classe, col=classe,data=kfoldtrain1)
+    trainplot <- trainplot + labs(title = "Figure 1 - Training data by classe")
+    print(trainplot)
+```
+
+```{r echo=TRUE}    
+    testplot <- qplot(classe, col=classe, data=kfoldtest1)
+    testplot <- testplot + labs(title = "Figure 2 - Testing data by classe")
+    print(testplot)
+```
+
+We will random forests, due to the fact that they have a high accuracy
+and we're not sure if entire model is linear.
+
+```{r echo=TRUE}
+    # Set seed for reproducibility of results
+    set.seed(4000) 
+    modFit <- randomForest(classe ~ ., data=kfoldtrain1)
+```
+
+### Sample and Out Of Sample Error
+To evaluate in-sample error, we will use a confusion matrix on our data set.
+
+```{r echo=TRUE}
+    kfoldpredict <- predict(modFit, kfoldtrain1)
+    confusionMatrix(kfoldpredict,kfoldtrain1$classe) 
+```
+
+We can see from the Accuracy output that are accuracy seems to 1 (100%)
+
+To evaluate the out of sample error, we look at the results returned from the
+test data set.
+
+```{r echo=TRUE}
+    testpredict <- predict(modFit, kfoldtest1)
+    confusionMatrix(testpredict,kfoldtest1$classe)
+    
+```
+
+For our test sample, accuracy is over 99%, so also very accurate.
+
+## Conclusion
+Using random forests as a prediction model for the classe variable has proven to be highly accurate on the Weight Lifting Exercise Dataset, once the variables with NAs and non predicting variables have been removed. The accuracy of training and data sets with the cleaned data is 100% and over 99% respectively.
+
